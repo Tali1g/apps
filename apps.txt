@@ -1,0 +1,133 @@
+import streamlit as st
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# Streamlit App Titel
+st.title("📊 Amazon Lagerbestands-Analyse Tool")
+st.write("Lade die Lagerbestandsdatei hoch und erhalte umfassende Analysen zu Verkäufen, Lagerbewegungen und Retouren.")
+
+# Datei-Upload
+uploaded_file = st.file_uploader("📂 Lade deine Amazon Lagerbestands-Datei hoch (CSV oder Excel)", type=["csv", "xlsx"])
+
+if uploaded_file is not None:
+    # Datei einlesen
+    if uploaded_file.name.endswith(".csv"):
+        df = pd.read_csv(uploaded_file, encoding="ISO-8859-1")
+    else:
+        df = pd.read_excel(uploaded_file)
+    
+    st.subheader("🔍 Vorschau der Daten")
+    st.dataframe(df.head())
+    
+    # Zeiträume auswählen
+    zeitraum = st.selectbox("📅 Wähle den Zeitraum für die Analyse", [
+        "Letzter Tag (gestern)", "In den letzten 3 Tagen", "In den letzten 7 Tagen", "In den letzten 14 Tagen",
+        "Letzte 30 Tage", "In den letzten 90 Tagen", "In den letzten 180 Tagen", "In den letzten 365 Tagen"])
+    
+    # Vergleich verschiedener Zeiträume
+    st.subheader("📊 Vergleich von Zeiträumen")
+    zeitraum_vergleich = st.selectbox("📅 Wähle einen zweiten Zeitraum zum Vergleich", [
+        "Keine Vergleich", "In den letzten 3 Tagen", "In den letzten 7 Tagen", "In den letzten 14 Tagen",
+        "Letzte 30 Tage", "In den letzten 90 Tagen"])
+    
+    # Event-Typ Filter
+    event_type = st.selectbox("🔄 Wähle den Event-Typ", df["Event Type"].unique())
+    df_filtered = df[df["Event Type"] == event_type]
+    
+    # Verkaufsanalyse nach MSKU und ASIN
+    st.subheader("📦 Verkaufs- und Lagerbewegungsanalyse")
+    if "MSKU" in df.columns and "Quantity" in df.columns:
+        verkauf_sku = df_filtered.groupby(["MSKU", "ASIN", "Title"])["Quantity"].sum().sort_values(ascending=False)
+        st.write("### Top 10 Produkte nach Anzahl Bewegungen")
+        st.dataframe(verkauf_sku.head(10))
+        
+        # Visualisierung der Verkäufe
+        fig, ax = plt.subplots()
+        verkauf_sku.head(10).plot(kind='bar', ax=ax)
+        plt.xticks(rotation=45)
+        plt.ylabel("Bewegte Menge (Einheiten)")
+        st.pyplot(fig)
+    else:
+        st.warning("Die Datei scheint nicht die erwarteten Spalten zu enthalten. Stelle sicher, dass `MSKU` und `Quantity` vorhanden sind.")
+    
+    # Retourenanalyse
+    st.subheader("🔄 Retouren-Analyse")
+    if "Event Type" in df.columns and "Quantity" in df.columns:
+        retouren = df[df["Event Type"].str.contains("Return", na=False)]
+        retouren_sku = retouren.groupby(["MSKU", "ASIN", "Title"])["Quantity"].sum().sort_values(ascending=False)
+        
+        st.write("### Top 10 Produkte mit den meisten Retouren")
+        st.dataframe(retouren_sku.head(10))
+        
+        # Retouren-Visualisierung
+        fig, ax = plt.subplots()
+        retouren_sku.head(10).plot(kind='bar', ax=ax)
+        plt.xticks(rotation=45)
+        plt.ylabel("Retouren (Einheiten)")
+        st.pyplot(fig)
+    else:
+        st.warning("Keine Retouren-Daten gefunden.")
+    
+    # Anomalie-Erkennung: Plötzlicher Verkaufsanstieg oder Retourenspitzen
+    st.subheader("⚠️ Anomalie-Erkennung")
+    threshold = st.slider("📈 Setze die Schwelle für eine ungewöhnliche Veränderung (z. B. 50%)", 10, 100, 50)
+    verkauf_sku_change = verkauf_sku.pct_change().fillna(0) * 100
+    anomalien = verkauf_sku_change[verkauf_sku_change.abs() > threshold]
+    if not anomalien.empty:
+        st.warning("🚨 Ungewöhnliche Veränderungen erkannt!")
+        st.dataframe(anomalien)
+    else:
+        st.success("✅ Keine ungewöhnlichen Veränderungen erkannt.")
+    
+    # Lagerbestandsentwicklung
+    st.subheader("📉 Lagerbestandsverlauf")
+    if "Date and Time" in df.columns:
+        df["Date and Time"] = pd.to_datetime(df["Date and Time"])
+        df_sorted = df.sort_values(by=["Date and Time"])
+        bestandsverlauf = df_sorted.groupby(["Date and Time", "MSKU"]).sum()["Quantity"].unstack().fillna(0)
+        st.line_chart(bestandsverlauf)
+    
+    # Export der Ergebnisse
+    st.subheader("📤 Export")
+    if st.button("Export als CSV"):
+        df_filtered.to_csv("amazon_analysen_export.csv", index=False)
+        st.success("Datei erfolgreich gespeichert: amazon_analysen_export.csv")
+
+# GitHub Dateien erstellen
+with open("requirements.txt", "w") as req_file:
+    req_file.write("streamlit\npandas\nmatplotlib")
+
+with open(".gitignore", "w") as gitignore:
+    gitignore.write("__pycache__/\n*.csv\n*.xlsx\n.env")
+
+with open("README.md", "w") as readme:
+    readme.write("""
+# Amazon Lagerbestands-Analyse Tool
+
+Dieses Tool analysiert Amazon-Lagerbestandsberichte und bietet umfassende Einblicke in Verkäufe, Retouren und Lagerbewegungen.
+
+## Neue Features:
+- 📊 **Vergleich von Zeiträumen**
+- 📉 **Lagerbestandsverlauf über die Zeit**
+- ⚠️ **Anomalie-Erkennung für plötzliche Veränderungen**
+- 📦 **Erweiterte Lagerbestandsanalyse**
+
+## Installation
+1. Python 3 installieren
+2. Benötigte Pakete installieren:
+   ```
+   pip install -r requirements.txt
+   ```
+3. Das Tool starten:
+   ```
+   streamlit run app.py
+   ```
+
+## Nutzung
+1. Amazon-Lagerbestandsbericht hochladen (CSV/Excel)
+2. Analysezeitraum auswählen & Vergleich aktivieren
+3. Anomalie-Erkennung nutzen
+4. Lagerbestandsentwicklung analysieren
+5. Ergebnisse exportieren
+
+""")
